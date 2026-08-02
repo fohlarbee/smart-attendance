@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { SuccessCheck } from "@/components/beacon/success-check";
 import { Button } from "@/components/ui/button";
 import { getDeviceHash } from "@/lib/device";
+import { reverseGeocode } from "@/lib/geocode";
 
 const READER_ID = "qr-reader";
 
@@ -19,6 +20,7 @@ type Status =
 
 export function ScanClient() {
   const [status, setStatus] = useState<Status>({ kind: "starting" });
+  const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const coordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lockRef = useRef(false);
@@ -75,6 +77,10 @@ export function ScanClient() {
       let coords: { lat: number; lng: number };
       try {
         coords = await getCoords();
+        // Resolve a readable place for display (non-blocking).
+        reverseGeocode(coords.lat, coords.lng).then((a) => {
+          if (a) setLocationLabel(a.full);
+        });
       } catch {
         setStatus({
           kind: "error",
@@ -209,6 +215,9 @@ export function ScanClient() {
                 {status.course && (
                   <p className="mt-1 text-sm text-muted">{status.course}</p>
                 )}
+                {locationLabel && (
+                  <p className="mt-3 text-xs text-faint">📍 {locationLabel}</p>
+                )}
               </div>
             </motion.div>
           )}
@@ -222,6 +231,11 @@ export function ScanClient() {
               <div>
                 <p className="text-3xl">⚠</p>
                 <p className="mt-4 text-sm text-alert">{status.message}</p>
+                {locationLabel && (
+                  <p className="mt-3 text-xs text-faint">
+                    📍 Your location: {locationLabel}
+                  </p>
+                )}
               </div>
             </motion.div>
           )}

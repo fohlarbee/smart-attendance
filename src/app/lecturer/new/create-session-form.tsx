@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { CAMPAIGN } from "@/lib/constants";
+import { reverseGeocode, type GeoAddress } from "@/lib/geocode";
 
 type Coords = { lat: number; lng: number; accuracy: number };
 type LocState =
@@ -26,6 +27,8 @@ export function CreateSessionForm({
   const [loc, setLoc] = useState<LocState>({ kind: "idle" });
   const [radius, setRadius] = useState<number>(CAMPAIGN.DEFAULT_RADIUS_M);
   const [label, setLabel] = useState("");
+  const [address, setAddress] = useState<GeoAddress | null>(null);
+  const [addrLoading, setAddrLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,16 +38,21 @@ export function CreateSessionForm({
       return;
     }
     setLoc({ kind: "locating" });
+    setAddress(null);
     navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        setLoc({
-          kind: "located",
-          coords: {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-          },
-        }),
+      (pos) => {
+        const coords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        };
+        setLoc({ kind: "located", coords });
+        setAddrLoading(true);
+        reverseGeocode(coords.lat, coords.lng).then((a) => {
+          setAddress(a);
+          setAddrLoading(false);
+        });
+      },
       (err) =>
         setLoc({
           kind: "error",
@@ -71,6 +79,7 @@ export function CreateSessionForm({
           centreLng: loc.coords.lng,
           radiusMetres: radius,
           label,
+          address: address?.full ?? null,
         }),
       });
       const data = await res.json();
@@ -116,13 +125,30 @@ export function CreateSessionForm({
             <p className="text-muted">Getting your location…</p>
           )}
           {loc.kind === "located" && (
-            <p className="font-mono text-success">
-              ✓ {loc.coords.lat.toFixed(5)}, {loc.coords.lng.toFixed(5)}
-              <span className="text-faint">
-                {" "}
-                (±{Math.round(loc.coords.accuracy)}m)
-              </span>
-            </p>
+            <div className="space-y-2">
+              <p className="font-mono text-success">
+                ✓ {loc.coords.lat.toFixed(5)}, {loc.coords.lng.toFixed(5)}
+                <span className="text-faint">
+                  {" "}
+                  (±{Math.round(loc.coords.accuracy)}m)
+                </span>
+              </p>
+              {addrLoading && (
+                <p className="text-xs text-muted">Resolving address…</p>
+              )}
+              {address && (
+                <div className="rounded-lg border border-hairline bg-ink px-3 py-2">
+                  <p className="text-sm text-fg">{address.full}</p>
+                  {(address.state || address.country) && (
+                    <p className="mt-0.5 text-xs text-muted">
+                      {[address.state, address.country]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           {loc.kind === "error" && <p className="text-alert">{loc.message}</p>}
         </div>
