@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/*
+  "Beacon" design system — deep ink + amber signal.
+  The app commits to a single dark identity: the projected QR is the hero and the
+  dark ground makes it read across a lecture hall. See SPEC.md / plan.
+*/
+@theme {
+  --color-ink: #0b0f14; /* page ground */
+  --color-surface: #141b24; /* cards, panels */
+  --color-surface-2: #1b2530; /* raised / hover */
+  --color-hairline: #26313d; /* borders, dividers */
+
+  --color-amber: #f5a524; /* primary signal accent */
+  --color-amber-soft: #fbc76a;
+  --color-success: #3dd68c; /* present / marked */
+  --color-alert: #ff6b57; /* out of range / error */
+
+  --color-fg: #f5f7fa; /* high-emphasis text */
+  --color-muted: #8a97a6; /* secondary text */
+  --color-faint: #5b6774; /* tertiary / disabled */
+
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+:root {
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient glow used behind the beacon and key CTAs. */
+.glow-amber {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-amber) 30%, transparent),
+    0 0 40px -4px color-mix(in oklab, var(--color-amber) 45%, transparent);
+}
+
+/* Focus ring — visible, keyboard-first. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Landing beacon: an amber scan line sweeping across the code. */
+@keyframes scan-sweep {
+  0%,
+  100% {
+    transform: translateY(-46%);
+    opacity: 0;
+  }
+  10%,
+  90% {
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(46%);
+    opacity: 1;
+  }
+}
+.scan-sweep {
+  animation: scan-sweep 3.2s ease-in-out infinite;
+}
+
+@keyframes beacon-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.04);
+  }
+}
+.beacon-pulse {
+  animation: beacon-pulse 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

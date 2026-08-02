@@ -1,0 +1,78 @@
+// Smart Attendance — data model. See SPEC.md §8.
+// SQLite for local dev; switch `provider` to "postgresql" for deploy.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// role: ADMIN | LECTURER | STUDENT  (SQLite has no enums; validated in app code)
+model User {
+  id           String   @id @default(cuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  role         String
+  matricNumber String?  @unique // required for students, unique across the system
+  createdAt    DateTime @default(now())
+
+  coursesTaught Course[]     @relation("LecturerCourses")
+  enrolments    Enrolment[]
+  attendances   Attendance[]
+}
+
+model Course {
+  id         String @id @default(cuid())
+  code       String @unique
+  title      String
+  lecturerId String
+
+  lecturer   User        @relation("LecturerCourses", fields: [lecturerId], references: [id])
+  enrolments Enrolment[]
+  sessions   Session[]
+}
+
+model Enrolment {
+  id        String @id @default(cuid())
+  courseId  String
+  studentId String
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  courseId     String
+  label        String?
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  centreLat    Float
+  centreLng    Float
+  radiusMetres Int       @default(50)
+
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  attendances Attendance[]
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  sessionId  String
+  studentId  String
+  markedAt   DateTime @default(now())
+  lat        Float?
+  lng        Float?
+  deviceHash String? // optional one-device-per-session layer (SPEC.md §7)
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student User    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@unique([sessionId, deviceHash]) // NULLs are distinct in SQLite, so this is safe when the layer is off
+}
