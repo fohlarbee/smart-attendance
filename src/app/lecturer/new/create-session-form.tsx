@@ -157,7 +157,7 @@ export function CreateSessionForm({
                 </span>
               </p>
               {poorGps && (
-                <p className="rounded-lg border border-alert/40 bg-alert/10 px-3 py-2 text-xs text-alert">
+                <p className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
                   This GPS fix is only accurate to ±{Math.round(accuracy!)}m. Drag
                   the pin to the exact building on the map, or recapture on a phone
                   with GPS near a window.

@@ -14,6 +14,7 @@
   --color-amber: #f5a524; /* primary signal accent */
   --color-amber-soft: #fbc76a;
   --color-success: #3dd68c; /* present / marked */
+  --color-warn: #f2c94c; /* caution (e.g. weak GPS) */
   --color-alert: #ff6b57; /* out of range / error */
 
   --color-fg: #f5f7fa; /* high-emphasis text */
