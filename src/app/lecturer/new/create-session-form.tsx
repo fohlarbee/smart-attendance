@@ -1,19 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { CAMPAIGN, GEO } from "@/lib/constants";
 import { reverseGeocode, mapLink, type GeoAddress } from "@/lib/geocode";
 import { getAccuratePosition } from "@/lib/geolocation";
+import { LocationPicker } from "@/components/location-picker";
 
-type Coords = { lat: number; lng: number; accuracy: number };
-type LocState =
-  | { kind: "idle" }
-  | { kind: "locating" }
-  | { kind: "located"; coords: Coords }
-  | { kind: "error"; message: string };
+type Center = { lat: number; lng: number };
 
 export function CreateSessionForm({
   courseId,
@@ -25,43 +21,57 @@ export function CreateSessionForm({
   courseTitle: string;
 }) {
   const router = useRouter();
-  const [loc, setLoc] = useState<LocState>({ kind: "idle" });
+  const [center, setCenter] = useState<Center | null>(null);
+  // GPS accuracy in metres; null means the pin was placed manually (precise).
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
+  const [address, setAddress] = useState<GeoAddress | null>(null);
   const [radius, setRadius] = useState<number>(CAMPAIGN.DEFAULT_RADIUS_M);
   const [label, setLabel] = useState("");
-  const [address, setAddress] = useState<GeoAddress | null>(null);
-  const [addrLoading, setAddrLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function captureLocation() {
-    if (!("geolocation" in navigator)) {
-      setLoc({ kind: "error", message: "This device can't share its location." });
-      return;
-    }
-    setLoc({ kind: "locating" });
+  // Resolve a readable address whenever the centre moves.
+  useEffect(() => {
+    if (!center) return;
+    let cancelled = false;
     setAddress(null);
+    reverseGeocode(center.lat, center.lng).then((a) => {
+      if (!cancelled) setAddress(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [center]);
+
+  async function useMyLocation() {
+    setLocating(true);
+    setLocError(null);
     try {
-      // Waits for a good GPS fix instead of taking the first (often coarse) one.
       const fix = await getAccuratePosition();
-      setLoc({ kind: "located", coords: fix });
-      setAddrLoading(true);
-      reverseGeocode(fix.lat, fix.lng).then((a) => {
-        setAddress(a);
-        setAddrLoading(false);
-      });
+      setCenter({ lat: fix.lat, lng: fix.lng });
+      setAccuracy(fix.accuracy);
     } catch (e) {
       const denied = (e as GeolocationPositionError)?.code === 1;
-      setLoc({
-        kind: "error",
-        message: denied
-          ? "Location permission was denied. Allow it to set the classroom."
-          : "Couldn't get a location fix. Try again near a window.",
-      });
+      setLocError(
+        denied
+          ? "Location permission was denied. Allow it, or place the pin on the map."
+          : "Couldn't get a location fix. Place the pin on the map instead.",
+      );
+    } finally {
+      setLocating(false);
     }
   }
 
+  // Dragging/clicking the map is a deliberate, precise choice.
+  function handlePick(lat: number, lng: number) {
+    setCenter({ lat, lng });
+    setAccuracy(null);
+  }
+
   async function start() {
-    if (loc.kind !== "located") return;
+    if (!center) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -70,9 +80,9 @@ export function CreateSessionForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           courseId,
-          centreLat: loc.coords.lat,
-          centreLng: loc.coords.lng,
-          centreAccuracy: Math.round(loc.coords.accuracy),
+          centreLat: center.lat,
+          centreLng: center.lng,
+          centreAccuracy: accuracy != null ? Math.round(accuracy) : 0,
           radiusMetres: radius,
           label,
           address: address?.full ?? null,
@@ -87,6 +97,8 @@ export function CreateSessionForm({
     }
   }
 
+  const poorGps = accuracy != null && accuracy > GEO.POOR_ACCURACY_M;
+
   return (
     <div className="space-y-6">
       <div>
@@ -100,59 +112,69 @@ export function CreateSessionForm({
       </div>
 
       {/* Location */}
-      <div className="rounded-2xl border border-hairline bg-surface p-5">
-        <div className="flex items-center justify-between">
+      <div className="space-y-3 rounded-2xl border border-hairline bg-surface p-5">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium">Classroom location</p>
             <p className="text-xs text-muted">
-              Students must be within range to be marked present.
+              Use your location on a phone, or drag the pin to your building.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={captureLocation} type="button">
-            {loc.kind === "located" ? "Recapture" : "Use my location"}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={useMyLocation}
+            type="button"
+            disabled={locating}
+          >
+            {locating ? "Locating…" : center ? "Recapture" : "Use my location"}
           </Button>
         </div>
 
-        <div className="mt-4 text-sm">
-          {loc.kind === "idle" && (
-            <p className="text-faint">No location captured yet.</p>
+        <LocationPicker
+          lat={center?.lat ?? null}
+          lng={center?.lng ?? null}
+          radius={radius}
+          onChange={handlePick}
+        />
+
+        <div className="text-sm">
+          {!center && !locError && (
+            <p className="text-faint">
+              Tap the map to drop the classroom pin, or use your location.
+            </p>
           )}
-          {loc.kind === "locating" && (
-            <p className="text-muted">Getting your location…</p>
-          )}
-          {loc.kind === "located" && (
+          {locError && <p className="text-alert">{locError}</p>}
+          {center && (
             <div className="space-y-2">
               <p className="font-mono text-success">
-                ✓ {loc.coords.lat.toFixed(5)}, {loc.coords.lng.toFixed(5)}
+                ✓ {center.lat.toFixed(5)}, {center.lng.toFixed(5)}
                 <span className="text-faint">
                   {" "}
-                  (±{Math.round(loc.coords.accuracy)}m)
+                  {accuracy != null
+                    ? `(GPS ±${Math.round(accuracy)}m)`
+                    : "(pinned on map)"}
                 </span>
               </p>
-              {loc.coords.accuracy > GEO.POOR_ACCURACY_M && (
+              {poorGps && (
                 <p className="rounded-lg border border-alert/40 bg-alert/10 px-3 py-2 text-xs text-alert">
-                  This fix is only accurate to ±{Math.round(loc.coords.accuracy)}m.
-                  For a precise classroom, capture on a phone with GPS (near a
-                  window / outdoors), then recapture.
+                  This GPS fix is only accurate to ±{Math.round(accuracy!)}m. Drag
+                  the pin to the exact building on the map, or recapture on a phone
+                  with GPS near a window.
                 </p>
-              )}
-              {addrLoading && (
-                <p className="text-xs text-muted">Resolving address…</p>
               )}
               {address && (
                 <div className="rounded-lg border border-hairline bg-ink px-3 py-2">
                   <p className="text-sm text-fg">{address.full}</p>
                   {(address.state || address.country) && (
                     <p className="mt-0.5 text-xs text-muted">
-                      {[address.state, address.country]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {[address.state, address.country].filter(Boolean).join(" · ")}
                     </p>
                   )}
                 </div>
               )}
               <a
-                href={mapLink(loc.coords.lat, loc.coords.lng)}
+                href={mapLink(center.lat, center.lng)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block text-xs text-amber hover:underline"
@@ -161,7 +183,6 @@ export function CreateSessionForm({
               </a>
             </div>
           )}
-          {loc.kind === "error" && <p className="text-alert">{loc.message}</p>}
         </div>
       </div>
 
@@ -205,7 +226,7 @@ export function CreateSessionForm({
         size="lg"
         className="w-full"
         onClick={start}
-        disabled={loc.kind !== "located" || submitting}
+        disabled={!center || submitting}
       >
         {submitting ? "Starting…" : "Start session"}
       </Button>
