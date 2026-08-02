@@ -43,10 +43,9 @@ export function LocationPicker({
       const startLat = lat ?? 9.082;
       const startLng = lng ?? 8.6753;
 
-      const map = L.map(containerRef.current).setView(
-        [startLat, startLng],
-        lat != null ? 18 : 6,
-      );
+      const map = L.map(containerRef.current, {
+        attributionControl: false,
+      }).setView([startLat, startLng], lat != null ? 18 : 6);
 
       // Base layers.
       const satellite = L.tileLayer(

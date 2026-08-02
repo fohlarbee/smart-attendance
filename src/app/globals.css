@@ -90,6 +90,35 @@ body {
   animation: beacon-pulse 3.2s ease-in-out infinite;
 }
 
+/* Leaflet controls — smaller and themed to match the app. */
+.leaflet-control-layers,
+.leaflet-bar {
+  border: 1px solid var(--color-hairline) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.leaflet-control-layers-toggle {
+  width: 30px !important;
+  height: 30px !important;
+  background-size: 16px 16px !important;
+}
+.leaflet-control-layers-expanded {
+  padding: 8px 10px !important;
+  font-size: 12px !important;
+  background: var(--color-surface) !important;
+  color: var(--color-fg) !important;
+}
+.leaflet-control-layers-expanded .leaflet-control-layers-separator {
+  border-color: var(--color-hairline) !important;
+}
+.leaflet-bar a {
+  width: 28px !important;
+  height: 28px !important;
+  line-height: 28px !important;
+  font-size: 15px !important;
+}
+
 /* Make the html5-qrcode camera preview fill its container instead of letterboxing. */
 #qr-reader {
   width: 100% !important;
