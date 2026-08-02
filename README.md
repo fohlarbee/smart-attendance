@@ -99,10 +99,29 @@ src/components/beacon/        RotatingQr, CountdownRing, SuccessCheck (the anima
 
 ## Deploying
 
-1. Set `provider = "postgresql"` in `prisma/schema.prisma`, point `DATABASE_URL` at a hosted
-   Postgres (e.g. Neon/Supabase), run `npx prisma migrate deploy`.
-2. Set `SERVER_SECRET` and `AUTH_SECRET` as environment variables.
-3. Deploy to Vercel. HTTPS there satisfies the camera/GPS secure-context requirement.
+**SQLite locally, Postgres in production** — the datasource `provider` is set automatically
+by `scripts/db-provider.mjs` (run from `predev`/`prebuild`). It picks `postgresql` when
+`DATABASE_URL` is a `postgres://…` string (or `DATABASE_PROVIDER=postgresql` is set), and
+`sqlite` otherwise. So local dev needs no changes; production just needs the right env vars.
+
+To deploy (e.g. Vercel + Neon):
+
+1. Create a Postgres database (Neon/Supabase). Set these env vars on the host:
+   - `DATABASE_URL` — the **pooled** connection string, with `?sslmode=require&pgbouncer=true`
+     (the `pgbouncer=true` flag keeps Prisma happy with Neon's connection pooler).
+   - `DATABASE_PROVIDER=postgresql` — guarantees the Postgres client is generated at build.
+   - `SERVER_SECRET` and `AUTH_SECRET` — 64-char hex each.
+2. Apply the schema + seed **once**, using the **direct (non-pooler)** connection string
+   (pooler endpoints reject schema changes):
+   ```bash
+   DATABASE_URL="<direct-url>" npm run db:push
+   DATABASE_URL="<direct-url>" npm run db:seed
+   ```
+3. Deploy. The build runs `prisma generate` for Postgres automatically; HTTPS on the host
+   satisfies the camera/GPS secure-context requirement.
+
+> Schema changes later: re-run `npm run db:push` against the **direct** URL. The app runtime
+> always uses the **pooled** URL.
 
 ---
 

@@ -3,11 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/db-provider.mjs && prisma generate",
     "dev": "next dev",
+    "prebuild": "node scripts/db-provider.mjs && prisma generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
+    "db:push": "node scripts/db-provider.mjs && prisma db push",
     "db:reset": "prisma migrate reset --force"
   },
   "prisma": {
