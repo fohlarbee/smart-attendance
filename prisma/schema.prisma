@@ -53,9 +53,10 @@ model Session {
   label        String?
   startedAt    DateTime  @default(now())
   endedAt      DateTime?
-  centreLat    Float
-  centreLng    Float
-  radiusMetres Int       @default(50)
+  centreLat      Float
+  centreLng      Float
+  centreAccuracy Float? // metres; GPS accuracy of the captured classroom centre
+  radiusMetres   Int       @default(50)
 
   course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
   attendances Attendance[]

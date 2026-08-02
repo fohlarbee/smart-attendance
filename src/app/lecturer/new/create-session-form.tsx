@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { CAMPAIGN } from "@/lib/constants";
-import { reverseGeocode, type GeoAddress } from "@/lib/geocode";
+import { CAMPAIGN, GEO } from "@/lib/constants";
+import { reverseGeocode, mapLink, type GeoAddress } from "@/lib/geocode";
+import { getAccuratePosition } from "@/lib/geolocation";
 
 type Coords = { lat: number; lng: number; accuracy: number };
 type LocState =
@@ -32,37 +33,31 @@ export function CreateSessionForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function captureLocation() {
+  async function captureLocation() {
     if (!("geolocation" in navigator)) {
       setLoc({ kind: "error", message: "This device can't share its location." });
       return;
     }
     setLoc({ kind: "locating" });
     setAddress(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const coords = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        };
-        setLoc({ kind: "located", coords });
-        setAddrLoading(true);
-        reverseGeocode(coords.lat, coords.lng).then((a) => {
-          setAddress(a);
-          setAddrLoading(false);
-        });
-      },
-      (err) =>
-        setLoc({
-          kind: "error",
-          message:
-            err.code === err.PERMISSION_DENIED
-              ? "Location permission was denied. Allow it to set the classroom."
-              : "Couldn't get a location fix. Try again near a window.",
-        }),
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 },
-    );
+    try {
+      // Waits for a good GPS fix instead of taking the first (often coarse) one.
+      const fix = await getAccuratePosition();
+      setLoc({ kind: "located", coords: fix });
+      setAddrLoading(true);
+      reverseGeocode(fix.lat, fix.lng).then((a) => {
+        setAddress(a);
+        setAddrLoading(false);
+      });
+    } catch (e) {
+      const denied = (e as GeolocationPositionError)?.code === 1;
+      setLoc({
+        kind: "error",
+        message: denied
+          ? "Location permission was denied. Allow it to set the classroom."
+          : "Couldn't get a location fix. Try again near a window.",
+      });
+    }
   }
 
   async function start() {
@@ -77,6 +72,7 @@ export function CreateSessionForm({
           courseId,
           centreLat: loc.coords.lat,
           centreLng: loc.coords.lng,
+          centreAccuracy: Math.round(loc.coords.accuracy),
           radiusMetres: radius,
           label,
           address: address?.full ?? null,
@@ -133,6 +129,13 @@ export function CreateSessionForm({
                   (±{Math.round(loc.coords.accuracy)}m)
                 </span>
               </p>
+              {loc.coords.accuracy > GEO.POOR_ACCURACY_M && (
+                <p className="rounded-lg border border-alert/40 bg-alert/10 px-3 py-2 text-xs text-alert">
+                  This fix is only accurate to ±{Math.round(loc.coords.accuracy)}m.
+                  For a precise classroom, capture on a phone with GPS (near a
+                  window / outdoors), then recapture.
+                </p>
+              )}
               {addrLoading && (
                 <p className="text-xs text-muted">Resolving address…</p>
               )}
@@ -148,6 +151,14 @@ export function CreateSessionForm({
                   )}
                 </div>
               )}
+              <a
+                href={mapLink(loc.coords.lat, loc.coords.lng)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-xs text-amber hover:underline"
+              >
+                View exact point on map ↗
+              </a>
             </div>
           )}
           {loc.kind === "error" && <p className="text-alert">{loc.message}</p>}

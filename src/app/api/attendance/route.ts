@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { verifyToken } from "@/lib/token";
 import { haversineMetres } from "@/lib/geo";
+import { GEO } from "@/lib/constants";
 
 // POST /api/attendance — student marks attendance by scanning the beacon.
 // Validation order mirrors SPEC.md §3 step 5.
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
     typeof body.deviceHash === "string" ? body.deviceHash : null;
   const lat = typeof body.lat === "number" ? body.lat : null;
   const lng = typeof body.lng === "number" ? body.lng : null;
+  const accuracy = typeof body.accuracy === "number" ? body.accuracy : null;
 
   // 1. Token authenticity + freshness.
   const check = verifyToken(token);
@@ -44,6 +46,7 @@ export async function POST(req: Request) {
       endedAt: true,
       centreLat: true,
       centreLng: true,
+      centreAccuracy: true,
       radiusMetres: true,
       courseId: true,
       course: { select: { title: true } },
@@ -90,20 +93,28 @@ export async function POST(req: Request) {
     lat,
     lng,
   );
-  const inside = distance <= session.radiusMetres;
+
+  // Two GPS points are "the same place" if their distance is within the sum of
+  // their error margins (plus the radius). We add each reported accuracy, capped
+  // so a very coarse fix can't silently disable the fence.
+  const centreTol = Math.min(session.centreAccuracy ?? 0, GEO.ACCURACY_CAP_M);
+  const studentTol = Math.min(accuracy ?? 0, GEO.ACCURACY_CAP_M);
+  const allowance = session.radiusMetres + centreTol + studentTol;
+  const inside = distance <= allowance;
 
   // Location diagnostics — visible in the server/Vercel logs.
   console.log(
     `[attendance] student=${user.id} (${user.fullName}) session=${session.id} ` +
-      `center=(${session.centreLat},${session.centreLng}) ` +
-      `studentLoc=(${lat},${lng}) ` +
-      `distance=${Math.round(distance)}m radius=${session.radiusMetres}m inside=${inside}`,
+      `center=(${session.centreLat},${session.centreLng}) centreAcc=${session.centreAccuracy ?? "?"}m ` +
+      `studentLoc=(${lat},${lng}) studentAcc=${accuracy ?? "?"}m ` +
+      `distance=${Math.round(distance)}m radius=${session.radiusMetres}m ` +
+      `allowance=${Math.round(allowance)}m inside=${inside}`,
   );
 
   if (!inside) {
     return NextResponse.json(
       {
-        error: `You're ${Math.round(distance)}m from the classroom (limit ${session.radiusMetres}m). Move closer and try again.`,
+        error: `You're about ${Math.round(distance)}m from the classroom (allowed ${Math.round(allowance)}m). Move closer, or the location fix may be weak — try again near a window.`,
       },
       { status: 403 },
     );

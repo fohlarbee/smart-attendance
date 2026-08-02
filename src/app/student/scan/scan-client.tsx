@@ -7,7 +7,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { SuccessCheck } from "@/components/beacon/success-check";
 import { Button } from "@/components/ui/button";
 import { getDeviceHash } from "@/lib/device";
-import { reverseGeocode } from "@/lib/geocode";
+import { reverseGeocode, mapLink } from "@/lib/geocode";
+import { getAccuratePosition, type Fix } from "@/lib/geolocation";
+import { GEO } from "@/lib/constants";
 
 const READER_ID = "qr-reader";
 
@@ -21,38 +23,38 @@ type Status =
 export function ScanClient() {
   const [status, setStatus] = useState<Status>({ kind: "starting" });
   const [locationLabel, setLocationLabel] = useState<string | null>(null);
+  const [mapHref, setMapHref] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const coordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const coordsRef = useRef<Fix | null>(null);
   const lockRef = useRef(false);
 
-  // Keep a fresh location fix in the background so marking is instant.
+  // Warm up GPS in the background and keep the best fix, so marking is quick.
   useEffect(() => {
     if (!("geolocation" in navigator)) return;
     const id = navigator.geolocation.watchPosition(
-      (p) =>
-        (coordsRef.current = {
+      (p) => {
+        const fix: Fix = {
           lat: p.coords.latitude,
           lng: p.coords.longitude,
-        }),
+          accuracy: p.coords.accuracy,
+        };
+        if (!coordsRef.current || fix.accuracy < coordsRef.current.accuracy) {
+          coordsRef.current = fix;
+        }
+      },
       () => {},
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10_000 },
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 12_000 },
     );
     return () => navigator.geolocation.clearWatch(id);
   }, []);
 
-  const getCoords = useCallback(
-    () =>
-      new Promise<{ lat: number; lng: number }>((resolve, reject) => {
-        if (coordsRef.current) return resolve(coordsRef.current);
-        if (!("geolocation" in navigator)) return reject(new Error("no-geo"));
-        navigator.geolocation.getCurrentPosition(
-          (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-          () => reject(new Error("denied")),
-          { enableHighAccuracy: true, timeout: 10_000 },
-        );
-      }),
-    [],
-  );
+  const getCoords = useCallback(async (): Promise<Fix> => {
+    // Use the warmed fix if it's already good; otherwise wait for a good one.
+    if (coordsRef.current && coordsRef.current.accuracy <= GEO.DESIRED_ACCURACY_M) {
+      return coordsRef.current;
+    }
+    return getAccuratePosition();
+  }, []);
 
   const stopScanner = useCallback(async () => {
     const s = scannerRef.current;
@@ -74,9 +76,10 @@ export function ScanClient() {
       await stopScanner();
       setStatus({ kind: "marking" });
 
-      let coords: { lat: number; lng: number };
+      let coords: Fix;
       try {
         coords = await getCoords();
+        setMapHref(mapLink(coords.lat, coords.lng));
         // Resolve a readable place for display (non-blocking).
         reverseGeocode(coords.lat, coords.lng).then((a) => {
           if (a) setLocationLabel(a.full);
@@ -105,6 +108,7 @@ export function ScanClient() {
             token,
             lat: coords.lat,
             lng: coords.lng,
+            accuracy: Math.round(coords.accuracy),
             deviceHash,
           }),
         });
@@ -235,6 +239,16 @@ export function ScanClient() {
                   <p className="mt-3 text-xs text-faint">
                     📍 Your location: {locationLabel}
                   </p>
+                )}
+                {mapHref && (
+                  <a
+                    href={mapHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-block text-xs text-amber hover:underline"
+                  >
+                    View your exact point on map ↗
+                  </a>
                 )}
               </div>
             </motion.div>

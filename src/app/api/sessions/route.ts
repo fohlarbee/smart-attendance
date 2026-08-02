@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const { courseId, centreLat, centreLng, radiusMetres, label, address } =
+  const { courseId, centreLat, centreLng, centreAccuracy, radiusMetres, label, address } =
     (body ?? {}) as Record<string, unknown>;
 
   if (
@@ -52,6 +52,10 @@ export async function POST(req: Request) {
       courseId: course.id,
       centreLat,
       centreLng,
+      centreAccuracy:
+        typeof centreAccuracy === "number" && Number.isFinite(centreAccuracy)
+          ? centreAccuracy
+          : null,
       radiusMetres: safeRadius,
       label: typeof label === "string" && label.trim() ? label.trim() : null,
     },
