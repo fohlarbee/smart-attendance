@@ -58,5 +58,10 @@ export async function POST(req: Request) {
     select: { id: true },
   });
 
+  console.log(
+    `[session:create] id=${session.id} course=${course.id} lecturer=${user.id} ` +
+      `center=(${centreLat},${centreLng}) radius=${safeRadius}m`,
+  );
+
   return NextResponse.json({ id: session.id }, { status: 201 });
 }

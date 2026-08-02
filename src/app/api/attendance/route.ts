@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { verifyToken } from "@/lib/token";
-import { isInsideGeofence } from "@/lib/geo";
+import { haversineMetres } from "@/lib/geo";
 
 // POST /api/attendance — student marks attendance by scanning the beacon.
 // Validation order mirrors SPEC.md §3 step 5.
@@ -75,22 +75,36 @@ export async function POST(req: Request) {
 
   // 4. Geofence — must have a location and be inside it (SPEC.md §6).
   if (lat === null || lng === null) {
+    console.warn(
+      `[attendance] student=${user.id} session=${session.id} REJECT=no-location`,
+    );
     return NextResponse.json(
       { error: "Location is required. Allow location access and try again." },
       { status: 400 },
     );
   }
-  if (
-    !isInsideGeofence(
-      session.centreLat,
-      session.centreLng,
-      session.radiusMetres,
-      lat,
-      lng,
-    )
-  ) {
+
+  const distance = haversineMetres(
+    session.centreLat,
+    session.centreLng,
+    lat,
+    lng,
+  );
+  const inside = distance <= session.radiusMetres;
+
+  // Location diagnostics — visible in the server/Vercel logs.
+  console.log(
+    `[attendance] student=${user.id} (${user.fullName}) session=${session.id} ` +
+      `center=(${session.centreLat},${session.centreLng}) ` +
+      `studentLoc=(${lat},${lng}) ` +
+      `distance=${Math.round(distance)}m radius=${session.radiusMetres}m inside=${inside}`,
+  );
+
+  if (!inside) {
     return NextResponse.json(
-      { error: "You're not in the classroom. Move closer and try again." },
+      {
+        error: `You're ${Math.round(distance)}m from the classroom (limit ${session.radiusMetres}m). Move closer and try again.`,
+      },
       { status: 403 },
     );
   }

@@ -90,6 +90,24 @@ body {
   animation: beacon-pulse 3.2s ease-in-out infinite;
 }
 
+/* Make the html5-qrcode camera preview fill its container instead of letterboxing. */
+#qr-reader {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+}
+#qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: inherit;
+}
+/* Hide the library's own scan-region overlay/box. */
+#qr-reader__scan_region img,
+#qr-reader__dashboard {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -131,7 +131,12 @@ export function ScanClient() {
       scannerRef.current = scanner;
       await scanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 240, height: 240 } },
+        {
+          fps: 15,
+          // No fixed qrbox: scan the whole frame so the code is read wherever
+          // it lands, instead of forcing it into a small centred square.
+          aspectRatio: 1,
+        },
         (decoded) => void submit(decoded),
         () => {},
       );
@@ -172,15 +177,10 @@ export function ScanClient() {
         {/* html5-qrcode mounts the camera stream here */}
         <div id={READER_ID} className={showReader ? "h-full w-full" : "hidden"} />
 
-        {showReader && (
-          <>
-            <div className="pointer-events-none absolute inset-8 rounded-2xl border-2 border-amber/70" />
-            {status.kind === "starting" && (
-              <p className="absolute inset-x-0 bottom-6 text-center text-sm text-muted">
-                Starting camera…
-              </p>
-            )}
-          </>
+        {showReader && status.kind === "starting" && (
+          <p className="absolute inset-x-0 bottom-6 text-center text-sm text-muted">
+            Starting camera…
+          </p>
         )}
 
         <AnimatePresence>
