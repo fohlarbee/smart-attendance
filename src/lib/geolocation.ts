@@ -1,18 +1,18 @@
-// Accuracy-aware geolocation. The browser's first fix is often a coarse
-// network/Wi-Fi reading (hundreds of metres off) before GPS locks in, so we
-// watch for a bit and keep the *best* (smallest-accuracy) fix rather than the
-// first one. See lib/constants GEO_* for the tunables.
+// Accuracy-aware geolocation.
+//
+// The browser's first fix is often a coarse network/Wi-Fi reading before GPS
+// locks in. We want the best (smallest-accuracy) fix, but we must never fail
+// just because a *high-accuracy* fix isn't available (e.g. on a laptop). So we
+// run two requests in parallel:
+//   - a fast, low-accuracy getCurrentPosition (a reliable floor), and
+//   - a high-accuracy watchPosition that refines it.
+// We resolve as soon as a fix meets the desired accuracy, or at maxWait with the
+// best fix seen. We only reject on permission-denied or if nothing arrives.
 
 import { GEO } from "@/lib/constants";
 
 export type Fix = { lat: number; lng: number; accuracy: number };
 
-/**
- * Resolve the most accurate position we can get within a time budget.
- * - resolves early once accuracy <= desiredAccuracy
- * - otherwise resolves with the best fix seen by maxWait
- * - rejects only if no fix at all arrives (or permission denied)
- */
 export function getAccuratePosition(opts?: {
   desiredAccuracy?: number;
   maxWait?: number;
@@ -28,37 +28,57 @@ export function getAccuratePosition(opts?: {
 
     let best: Fix | null = null;
     let settled = false;
+    let watchId: number | null = null;
 
-    const finish = () => {
+    const cleanup = () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      clearTimeout(timer);
+    };
+    const succeed = (fix: Fix) => {
       if (settled) return;
       settled = true;
-      navigator.geolocation.clearWatch(watchId);
-      clearTimeout(timer);
-      if (best) resolve(best);
-      else reject(new Error("no-fix"));
+      cleanup();
+      resolve(fix);
+    };
+    const fail = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
     };
 
-    const watchId = navigator.geolocation.watchPosition(
-      (p) => {
-        const fix: Fix = {
-          lat: p.coords.latitude,
-          lng: p.coords.longitude,
-          accuracy: p.coords.accuracy,
-        };
-        if (!best || fix.accuracy < best.accuracy) best = fix;
-        if (fix.accuracy <= desired) finish();
-      },
-      (err) => {
-        // Only fail hard if we have nothing yet (e.g. permission denied).
-        if (!best) {
-          settled = true;
-          clearTimeout(timer);
-          reject(err);
-        }
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: maxWait },
-    );
+    const consider = (p: GeolocationPosition) => {
+      const fix: Fix = {
+        lat: p.coords.latitude,
+        lng: p.coords.longitude,
+        accuracy: p.coords.accuracy,
+      };
+      if (!best || fix.accuracy < best.accuracy) best = fix;
+      if (fix.accuracy <= desired) succeed(fix);
+    };
+    const onError = (err: GeolocationPositionError) => {
+      // Permission denied is terminal; tolerate other errors and wait for a fix.
+      if (err.code === err.PERMISSION_DENIED) fail(err);
+    };
 
-    const timer = setTimeout(finish, maxWait);
+    // Reliable coarse floor (this is what worked previously). maximumAge lets it
+    // return a very recent cached fix instantly.
+    navigator.geolocation.getCurrentPosition(consider, onError, {
+      enableHighAccuracy: false,
+      timeout: maxWait,
+      maximumAge: 60_000,
+    });
+
+    // High-accuracy refinement.
+    watchId = navigator.geolocation.watchPosition(consider, onError, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: maxWait,
+    });
+
+    const timer = setTimeout(() => {
+      if (best) succeed(best);
+      else fail(new Error("no-fix"));
+    }, maxWait);
   });
 }
